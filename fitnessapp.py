@@ -4,15 +4,16 @@ import mediapipe as mp
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 import time
 
-# =====================
+# ------------------------
 # MediaPipe Setup
-# =====================
+# ------------------------
 mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 
-# =====================
+# ------------------------
 # Sit-Up Transformer
-# =====================
-class SitUpVideoTransformer(VideoTransformerBase):
+# ------------------------
+class SitUpTransformer(VideoTransformerBase):
     def __init__(self):
         self.pose = mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6)
         self.state = "waiting_for_down"
@@ -37,7 +38,6 @@ class SitUpVideoTransformer(VideoTransformerBase):
                 self.baseline_nose_y = nose_y
                 self.down_threshold = self.baseline_nose_y + 0.15
                 self.up_threshold = self.baseline_nose_y - 0.15
-                self.sit_ups_count = 0
 
             if self.state == "waiting_for_down" and nose_y > self.down_threshold:
                 self.state = "waiting_for_up"
@@ -46,15 +46,17 @@ class SitUpVideoTransformer(VideoTransformerBase):
                 self.last_rep_time = current_time
                 self.state = "waiting_for_down"
 
-            mp.solutions.drawing_utils.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        
+        # Display the count directly on the video frame
+        cv2.putText(img, f"Sit-Ups: {self.sit_ups_count}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
 
         return img
 
-
-# =====================
+# ------------------------
 # Jump Transformer
-# =====================
-class JumpCounterTransformer(VideoTransformerBase):
+# ------------------------
+class JumpTransformer(VideoTransformerBase):
     def __init__(self):
         self.pose = mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6)
         self.state = "waiting_for_jump"
@@ -87,60 +89,50 @@ class JumpCounterTransformer(VideoTransformerBase):
                 self.last_rep_time = current_time
                 self.state = "waiting_for_jump"
 
-            mp.solutions.drawing_utils.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-
-            cv2.rectangle(img, (10, 10), (320, 90), (204, 0, 122), -1)
-            cv2.putText(img, f"Jumps: {self.jump_count}", (20, 60),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+            mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        
+        # Display the count directly on the video frame
+        cv2.putText(img, f"Jumps: {self.jump_count}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
 
         return img
 
-
-# =====================
+# ------------------------
 # Streamlit UI
-# =====================
-st.set_page_config(page_title="🏃 Fitness Tracker", layout="wide")
-
-st.markdown(f"""
-    <div style='background: linear-gradient(to right, #06b6d4, #3b82f6); padding: 30px; border-radius: 15px; text-align: center;'>
-        <h1 style='color: #ffffff; font-size: 42px;'>🏃 Fitness Tracker</h1>
-        <p style='color: #f0f0f0; font-size: 18px;'>Track your Sit-Ups and Jumps in real-time using your webcam</p>
+# ------------------------
+st.set_page_config(page_title="🏃 Fitness Tracker", layout="centered")
+st.markdown("""
+    <div style='background: linear-gradient(90deg, #ff7e5f, #feb47b); padding: 25px; border-radius: 15px; text-align:center;'>
+        <h1 style='color:white; font-size:48px;'>🏋️‍♂️ Fitness Tracker</h1>
+        <p style='color:white; font-size:18px;'>Count Sit-Ups & Jumps in real-time using your camera</p>
     </div>
 """, unsafe_allow_html=True)
 
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ------------------------
+# Activity Selection
+# ------------------------
 activity = st.selectbox("Choose Activity", ["Sit-Ups", "Jumps"])
 
-rtc_config = {
-    "iceServers": [
-        {"urls": ["stun:stun.l.google.com:19302"]},
-        {
-            "urls": ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
-            "username": "openrelayproject",
-            "credential": "openrelayproject"
-        }
-    ]
-}
+st.info("⚠️ Please allow camera access in your browser!")
 
+# ------------------------
+# Start WebRTC Streamer
+# ------------------------
 if activity == "Sit-Ups":
-    webrtc_ctx = webrtc_streamer(
-        key="situp-counter",
+    webrtc_streamer(
+        key="situps",
         mode=WebRtcMode.SENDRECV,
-        video_transformer_factory=SitUpVideoTransformer,
+        video_transformer_factory=SitUpTransformer,
         media_stream_constraints={"video": True, "audio": False},
-        async_transform=True,
-        rtc_configuration=rtc_config
+        async_transform=True
     )
-    if webrtc_ctx.video_transformer:
-        st.metric("💪 Sit-Ups Count", webrtc_ctx.video_transformer.sit_ups_count)
-
-elif activity == "Jumps":
-    webrtc_ctx = webrtc_streamer(
-        key="jump-counter",
+else:
+    webrtc_streamer(
+        key="jumps",
         mode=WebRtcMode.SENDRECV,
-        video_transformer_factory=JumpCounterTransformer,
+        video_transformer_factory=JumpTransformer,
         media_stream_constraints={"video": True, "audio": False},
-        async_transform=True,
-        rtc_configuration=rtc_config
+        async_transform=True
     )
-    if webrtc_ctx.video_transformer:
-        st.metric("🦵 Jump Count", webrtc_ctx.video_transformer.jump_count)
+    
