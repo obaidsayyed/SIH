@@ -48,9 +48,7 @@ class SitUpTransformer(VideoTransformerBase):
 
             mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
         
-        # Display the count directly on the video frame
         cv2.putText(img, f"Sit-Ups: {self.sit_ups_count}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
-
         return img
 
 # ------------------------
@@ -91,7 +89,6 @@ class JumpTransformer(VideoTransformerBase):
 
             mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
         
-        # Display the count directly on the video frame
         cv2.putText(img, f"Jumps: {self.jump_count}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
 
         return img
@@ -119,13 +116,16 @@ st.info("⚠️ Please allow camera access in your browser!")
 # ------------------------
 # Start WebRTC Streamer
 # ------------------------
+rtc_configuration = {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+
 if activity == "Sit-Ups":
     webrtc_streamer(
         key="situps",
         mode=WebRtcMode.SENDRECV,
         video_transformer_factory=SitUpTransformer,
         media_stream_constraints={"video": True, "audio": False},
-        async_transform=True
+        async_transform=True,
+        rtc_configuration=rtc_configuration
     )
 else:
     webrtc_streamer(
@@ -133,6 +133,6 @@ else:
         mode=WebRtcMode.SENDRECV,
         video_transformer_factory=JumpTransformer,
         media_stream_constraints={"video": True, "audio": False},
-        async_transform=True
+        async_transform=True,
+        rtc_configuration=rtc_configuration
     )
-    
