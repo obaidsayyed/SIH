@@ -1,154 +1,111 @@
 import streamlit as st
 import cv2
 import mediapipe as mp
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
-import time
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode, RTCConfiguration
+import numpy as np
 
-# ------------------------
-# MediaPipe Setup
-# ------------------------
+# MediaPipe setup
 mp_pose = mp.solutions.pose
 
-# ------------------------
-# Sit-Up Transformer
-# ------------------------
-class SitUpTransformer(VideoTransformerBase):
+# RTC Configuration (STUN + TURN for Render HTTPS)
+RTC_CONFIGURATION = RTCConfiguration(
+    {
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},  # Free Google STUN
+            {
+                "urls": ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443"],
+                "username": "openrelayproject",
+                "credential": "openrelayproject",
+            },
+        ]
+    }
+)
+
+# Situps counter logic
+class SitupCounter(VideoTransformerBase):
     def __init__(self):
-        self.pose = mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6)
-        self.state = "waiting_for_down"
-        self.last_rep_time = time.time()
-        self.rep_cooldown_sec = 1.2
-        self.sit_ups_count = 0
-        self.baseline_nose_y = None
-        self.down_threshold = None
-        self.up_threshold = None
+        self.counter = 0
+        self.stage = None
+        self.pose = mp_pose.Pose()
 
     def transform(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        results = self.pose.process(rgb_img)
+        image = frame.to_ndarray(format="bgr24")
+        results = self.pose.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
         if results.pose_landmarks:
             landmarks = results.pose_landmarks.landmark
-            nose_y = landmarks[mp_pose.PoseLandmark.NOSE].y
-            current_time = time.time()
+            hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value]
+            shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
 
-            if self.baseline_nose_y is None:
-                self.baseline_nose_y = nose_y
-                self.down_threshold = self.baseline_nose_y + 0.15
-                self.up_threshold = self.baseline_nose_y - 0.15
-                self.sit_ups_count = 0
+            if shoulder.y < hip.y:
+                self.stage = "up"
+            if shoulder.y > hip.y and self.stage == "up":
+                self.stage = "down"
+                self.counter += 1
 
-            if self.state == "waiting_for_down" and nose_y > self.down_threshold:
-                self.state = "waiting_for_up"
-            elif self.state == "waiting_for_up" and nose_y < self.up_threshold and (current_time - self.last_rep_time) > self.rep_cooldown_sec:
-                self.sit_ups_count += 1
-                self.last_rep_time = current_time
-                self.state = "waiting_for_down"
+            cv2.putText(image, f"Situps: {self.counter}", (20, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
 
-            mp.solutions.drawing_utils.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        return image
 
-        return img
 
-# ------------------------
-# Jump Transformer
-# ------------------------
-class JumpTransformer(VideoTransformerBase):
+# Jump counter logic
+class JumpCounter(VideoTransformerBase):
     def __init__(self):
-        self.pose = mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6)
-        self.state = "waiting_for_jump"
-        self.last_rep_time = time.time()
-        self.rep_cooldown_sec = 1.0
-        self.jump_count = 0
-        self.baseline_y = None
-        self.up_threshold = None
-        self.down_threshold = None
+        self.counter = 0
+        self.stage = None
+        self.pose = mp_pose.Pose()
 
     def transform(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        results = self.pose.process(rgb_img)
+        image = frame.to_ndarray(format="bgr24")
+        results = self.pose.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
         if results.pose_landmarks:
             landmarks = results.pose_landmarks.landmark
-            hip_y = landmarks[mp_pose.PoseLandmark.LEFT_HIP].y
-            current_time = time.time()
+            ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value]
 
-            if self.baseline_y is None:
-                self.baseline_y = hip_y
-                self.down_threshold = self.baseline_y + 0.1
-                self.up_threshold = self.baseline_y - 0.1
+            if ankle.y > 0.9:  # Standing
+                self.stage = "down"
+            if ankle.y < 0.8 and self.stage == "down":  # Jump detected
+                self.stage = "up"
+                self.counter += 1
 
-            if self.state == "waiting_for_jump" and hip_y < self.up_threshold:
-                self.state = "waiting_for_land"
-            elif self.state == "waiting_for_land" and hip_y > self.down_threshold and (current_time - self.last_rep_time) > self.rep_cooldown_sec:
-                self.jump_count += 1
-                self.last_rep_time = current_time
-                self.state = "waiting_for_jump"
+            cv2.putText(image, f"Jumps: {self.counter}", (20, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
 
-            mp.solutions.drawing_utils.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        return image
 
-            cv2.rectangle(img, (10, 10), (320, 90), (204, 0, 122), -1)
-            cv2.putText(img, f"Jumps: {self.jump_count}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
 
-        return img
-
-# ------------------------
 # Streamlit UI
-# ------------------------
-st.set_page_config(page_title="🏃 Fitness Tracker", layout="centered")
-st.markdown("""
-    <div style='background: linear-gradient(90deg, #ff7e5f, #feb47b); padding: 25px; border-radius: 15px; text-align:center;'>
-        <h1 style='color:white; font-size:48px;'>🏋️‍♂️ Fitness Tracker</h1>
-        <p style='color:white; font-size:18px;'>Count Sit-Ups & Jumps in real-time using your camera</p>
-    </div>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="Fitness Tracker", layout="centered")
 
-st.markdown("<br>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    body {background: linear-gradient(135deg, #74ABE2, #5563DE);}
+    .stSelectbox label {font-size:20px; color:white;}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# ------------------------
-# Activity Selection
-# ------------------------
-activity = st.selectbox("Choose Activity", ["Sit-Ups", "Jumps"])
+st.title("🏋️ AI Fitness Tracker")
+activity = st.selectbox("Choose Activity", ["Situps", "Jumps"])
 
-st.info("⚠️ Please allow camera access in your browser!")
-
-# ------------------------
-# Start WebRTC Streamer
-# ------------------------
-if activity == "Sit-Ups":
-    webrtc_ctx = webrtc_streamer(
+if activity == "Situps":
+    webrtc_streamer(
         key="situps",
         mode=WebRtcMode.SENDRECV,
-        video_transformer_factory=SitUpTransformer,
+        rtc_configuration=RTC_CONFIGURATION,
+        video_transformer_factory=SitupCounter,
         media_stream_constraints={"video": True, "audio": False},
-        async_transform=True
     )
-else:
-    webrtc_ctx = webrtc_streamer(
+
+elif activity == "Jumps":
+    webrtc_streamer(
         key="jumps",
         mode=WebRtcMode.SENDRECV,
-        video_transformer_factory=JumpTransformer,
+        rtc_configuration=RTC_CONFIGURATION,
+        video_transformer_factory=JumpCounter,
         media_stream_constraints={"video": True, "audio": False},
-        async_transform=True
     )
-
-# ------------------------
-# Display Counter
-# ------------------------
-counter_placeholder = st.empty()
-
-if webrtc_ctx.video_transformer:
-    if activity == "Sit-Ups":
-        count = webrtc_ctx.video_transformer.sit_ups_count
-        color = "#10B981"
-    else:
-        count = webrtc_ctx.video_transformer.jump_count
-        color = "#9333ea"
-
-    counter_placeholder.markdown(f"""
-        <div style='background:{color}; padding:20px; border-radius:15px; text-align:center;'>
-            <h2 style='color:white;'>💪 {activity} Count</h2>
-            <h1 style='color:#FACC15; font-size:80px;'>{count}</h1>
-        </div>
-    """, unsafe_allow_html=True)
