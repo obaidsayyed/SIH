@@ -1,5 +1,4 @@
-streamlit-webrtc==0.51.0
+streamlit==1.28.2
 opencv-python==4.8.1.78
 mediapipe==0.10.7
-streamlit-webrtc==0.40.1
-
+streamlit-webrtc==0.51.0
