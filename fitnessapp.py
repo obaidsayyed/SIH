@@ -90,7 +90,6 @@ class JumpTransformer(VideoTransformerBase):
             mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
         
         cv2.putText(img, f"Jumps: {self.jump_count}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
-
         return img
 
 # ------------------------
@@ -116,7 +115,14 @@ st.info("⚠️ Please allow camera access in your browser!")
 # ------------------------
 # Start WebRTC Streamer
 # ------------------------
-rtc_configuration = {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+rtc_configuration = {
+    "iceServers": [
+        {"urls": "stun:stun.l.google.com:19302"},
+        {"urls": "stun:stun1.l.google.com:19302"},
+        {"urls": "stun:stun2.l.google.com:19302"},
+        {"urls": "stun:stun.services.mozilla.com"}
+    ]
+}
 
 if activity == "Sit-Ups":
     webrtc_streamer(
