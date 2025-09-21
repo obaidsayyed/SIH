@@ -35,7 +35,7 @@ class SitUpVideoTransformer(VideoTransformerBase):
 
             if self.baseline_nose_y is None:
                 self.baseline_nose_y = nose_y
-                self.down_threshold = self.baseline_nose_y + 0.08
+                self.down_threshold = self.baseline_nose_y + 0.09
                 self.up_threshold = self.baseline_nose_y - 0.08
 
             if self.state == "waiting_for_down":
@@ -64,9 +64,9 @@ class JumpCounterTransformer(VideoTransformerBase):
         self.jump_count = 0
         self.state = "waiting_for_jump"
         self.last_rep_time = time.time()
-        self.rep_cooldown_sec = 0.5
+        self.rep_cooldown_sec = 0.7
         self.baseline_y = None
-        self.min_jump_displacement = 0.08
+        self.min_jump_displacement = 0.09
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
