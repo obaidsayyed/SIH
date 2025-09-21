@@ -1,4 +1,4 @@
-# 🏃 Fitness Tracker: Live Sit-Ups & Jump Counter
+# 🏃 AthliTech
 
 This is a **real-time fitness tracker** web app built with **Streamlit**, **OpenCV**, and **MediaPipe**. It uses your webcam to **count sit-ups and jumps** live, making it a perfect tool for home workouts, fitness challenges, or just fun tracking.  
 
